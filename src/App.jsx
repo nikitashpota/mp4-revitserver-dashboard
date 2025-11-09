@@ -5,6 +5,8 @@ import FileUpload from './components/FileUpload';
 import DateFilter from './components/DateFilter';
 import UserStatsTable from './components/UserStatsTable';
 import ActivityChart from './components/ActivityChart';
+import ModelsAnalytics from './components/ModelsAnalytics';
+import ServersStats from './components/ServersStats';
 import EmptyState from './components/EmptyState';
 import SummaryStats from './components/SummaryStats';
 import { parseTSVData, processData, formatDateForInput, bytesToMB } from './utils/dataUtils';
@@ -177,6 +179,11 @@ function App() {
             />
 
             <SummaryStats filteredData={filteredData} />
+
+            {/* Новые компоненты */}
+            <ServersStats filteredData={filteredData} />
+            
+            <ModelsAnalytics filteredData={filteredData} />
 
             <UserStatsTable userStats={userStats} />
 
