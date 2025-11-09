@@ -120,7 +120,7 @@ const ServersStats = ({ filteredData }) => {
             </div>
             <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-lg p-4 border border-purple-200">
               <div className="text-sm text-gray-600">Общий объём</div>
-              <div className="text-3xl font-bold text-purple-700">{totalData.toFixed(2)} МБ</div>
+              <div className="text-3xl font-bold text-purple-700">{(totalData / 1024).toFixed(2)} ГБ</div>
             </div>
             <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-lg p-4 border border-orange-200">
               <div className="text-sm text-gray-600">Активных моделей</div>
@@ -170,7 +170,7 @@ const ServersStats = ({ filteredData }) => {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                       <div>
                         <div className="text-gray-500">Объём данных</div>
-                        <div className="font-semibold text-gray-900">{server.totalDataMB} МБ</div>
+                        <div className="font-semibold text-gray-900">{(server.totalDataMB/ 1024).toFixed(2)} ГБ</div>
                       </div>
                       <div>
                         <div className="text-gray-500">Моделей</div>
