@@ -29,7 +29,7 @@ const handleFileLoaded = (text) => {
 
   if (validDates.length > 0) {
     const minDate = new Date(Math.min(...validDates));
-    const maxDate = new Date(Math.max(...validates));
+    const maxDate = new Date(Math.max(...validDates));
     setStartDate(formatDateForInput(minDate));
     setEndDate(formatDateForInput(maxDate));
   } else {
