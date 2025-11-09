@@ -6,7 +6,6 @@ import DateFilter from './components/DateFilter';
 import UserStatsTable from './components/UserStatsTable';
 import ActivityChart from './components/ActivityChart';
 import EmptyState from './components/EmptyState';
-import DataDebugInfo from './components/DataDebugInfo';
 import SummaryStats from './components/SummaryStats';
 import { parseTSVData, processData, formatDateForInput, bytesToMB } from './utils/dataUtils';
 
@@ -17,41 +16,40 @@ function App() {
   const [selectedServer, setSelectedServer] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
 
-// В handleFileLoaded — не устанавливаем даты, если нет валидных
-const handleFileLoaded = (text) => {
-  const parsed = parseTSVData(text);
-  const withDates = processData(parsed);
-  setData(withDates);
+  const handleFileLoaded = (text) => {
+    const parsed = parseTSVData(text);
+    const withDates = processData(parsed);
+    setData(withDates);
 
-  const validDates = withDates
-    .map(d => d.parsedDate)
-    .filter(d => d && !isNaN(d.getTime()));
+    const validDates = withDates
+      .map(d => d.parsedDate)
+      .filter(d => d && !isNaN(d.getTime()));
 
-  if (validDates.length > 0) {
-    const minDate = new Date(Math.min(...validDates));
-    const maxDate = new Date(Math.max(...validDates));
-    setStartDate(formatDateForInput(minDate));
-    setEndDate(formatDateForInput(maxDate));
-  } else {
-    setStartDate('');
-    setEndDate('');
-  }
-};
+    if (validDates.length > 0) {
+      const minDate = new Date(Math.min(...validDates));
+      const maxDate = new Date(Math.max(...validDates));
+      setStartDate(formatDateForInput(minDate));
+      setEndDate(formatDateForInput(maxDate));
+    } else {
+      setStartDate('');
+      setEndDate('');
+    }
+  };
 
-// filteredData — возвращает ВСЁ, если даты не выбраны
-const filteredData = useMemo(() => {
-  if (!data.length) return [];
-  if (!startDate || !endDate) return data; // ← КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
+  const filteredData = useMemo(() => {
+    if (!data.length) return [];
+    if (!startDate || !endDate) return data;
 
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  end.setHours(23, 59, 59, 999);
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
 
-  return data.filter(record => {
-    const recordDate = record.parsedDate;
-    return recordDate && !isNaN(recordDate.getTime()) && recordDate >= start && recordDate <= end;
-  });
-}, [data, startDate, endDate]);
+    return data.filter(record => {
+      const recordDate = record.parsedDate;
+      return recordDate && !isNaN(recordDate.getTime()) && recordDate >= start && recordDate <= end;
+    });
+  }, [data, startDate, endDate]);
+
   const servers = useMemo(() => {
     return [...new Set(filteredData.map(d => d['Сервер']))].filter(Boolean);
   }, [filteredData]);
@@ -63,7 +61,7 @@ const filteredData = useMemo(() => {
       .map(d => d['Имя файла']))].filter(Boolean);
   }, [filteredData, selectedServer]);
 
-  // Статистика пользователей — только supportSize
+  // Статистика пользователей с учетом уникальных дней
   const userStats = useMemo(() => {
     const stats = {};
 
@@ -75,23 +73,34 @@ const filteredData = useMemo(() => {
         stats[user] = {
           user: user,
           syncCount: 0,
-          totalDataMB: 0
+          totalDataBytes: 0,
+          days: new Set()
         };
       }
 
       stats[user].syncCount += 1;
-      stats[user].totalDataMB += record.supportSize; // ← SupportSize
+      stats[user].totalDataBytes += record.supportSize;
+      
+      // Добавляем уникальные дни
+      if (record.parsedDate) {
+        const dateKey = record.parsedDate.toLocaleDateString('ru-RU');
+        stats[user].days.add(dateKey);
+      }
     });
 
     return Object.values(stats)
       .map(stat => ({
-        ...stat,
-        totalDataMB: bytesToMB(stat.totalDataMB)
+        user: stat.user,
+        syncCount: stat.syncCount,
+        totalDataMB: bytesToMB(stat.totalDataBytes),
+        avgDataPerDay: stat.days.size > 0 
+          ? bytesToMB(stat.totalDataBytes / stat.days.size)
+          : '0.00'
       }))
       .sort((a, b) => parseFloat(b.totalDataMB) - parseFloat(a.totalDataMB));
   }, [filteredData]);
 
-  // Данные для графика — только supportSize
+  // Данные для графика
   const chartData = useMemo(() => {
     if (!selectedServer || !selectedModel) return [];
 
@@ -116,7 +125,7 @@ const filteredData = useMemo(() => {
         };
       }
 
-      dailyData[dateKey].dataSizeMB += record.supportSize; // ← SupportSize
+      dailyData[dateKey].dataSizeMB += record.supportSize;
       dailyData[dateKey].syncCount += 1;
     });
 
@@ -130,6 +139,16 @@ const filteredData = useMemo(() => {
         const dateB = new Date(b.date.split('.').reverse().join('-'));
         return dateA - dateB;
       });
+  }, [filteredData, selectedServer, selectedModel]);
+
+  // Детальные данные для выбранной модели (для таблицы пользователей в графике)
+  const modelDetailedData = useMemo(() => {
+    if (!selectedServer || !selectedModel) return [];
+    
+    return filteredData.filter(record =>
+      record['Сервер'] === selectedServer &&
+      record['Имя файла'] === selectedModel
+    );
   }, [filteredData, selectedServer, selectedModel]);
 
   const handleServerChange = (server) => {
@@ -149,7 +168,6 @@ const filteredData = useMemo(() => {
 
         {data.length > 0 ? (
           <>
-
             <DateFilter
               startDate={startDate}
               endDate={endDate}
@@ -164,6 +182,7 @@ const filteredData = useMemo(() => {
 
             <ActivityChart
               chartData={chartData}
+              detailedData={modelDetailedData}
               servers={servers}
               models={models}
               selectedServer={selectedServer}
