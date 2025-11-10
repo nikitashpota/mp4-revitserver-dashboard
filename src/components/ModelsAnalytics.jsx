@@ -101,7 +101,7 @@ const ModelsAnalytics = ({ filteredData }) => {
 
   const handleModelChange = useCallback(opt => setSelectedModelForGrowth(opt?.value ?? ''), []);
 
-  // ---------- Рейтинг моделей ----------
+  // ---------- Рейтинг моделей (ИСПОЛЬЗУЕМ ПОСЛЕДНИЙ ModelSize) ----------
   const modelsRating = useMemo(() => {
     const stats = {};
 
@@ -116,17 +116,18 @@ const ModelsAnalytics = ({ filteredData }) => {
           model,
           server,
           syncCount: 0,
-          totalDataBytes: 0,
+          lastModelSize: 0,  // ИЗМЕНЕНО: храним последний размер
           lastSync: null,
           users: new Set(),
         };
       }
 
       stats[key].syncCount += 1;
-      stats[key].totalDataBytes += record.supportSize || 0;
 
+      // ИЗМЕНЕНО: берем последнее значение ModelSize, а не сумму
       if (record.parsedDate && (!stats[key].lastSync || record.parsedDate > stats[key].lastSync)) {
         stats[key].lastSync = record.parsedDate;
+        stats[key].lastModelSize = record.modelSize || 0;
       }
 
       if (record['User']) stats[key].users.add(record['User']);
@@ -135,14 +136,14 @@ const ModelsAnalytics = ({ filteredData }) => {
     return Object.values(stats)
       .map(stat => ({
         ...stat,
-        totalDataMB: bytesToMB(stat.totalDataBytes),
+        totalDataMB: bytesToMB(stat.lastModelSize), // ИЗМЕНЕНО: используем последний размер
         usersCount: stat.users.size,
         type: extractModelType(stat.model),
       }))
       .sort((a, b) => b.syncCount - a.syncCount);
   }, [filteredData]);
 
-  // ---------- Распределение по типам ----------
+  // ---------- Распределение по типам (ИСПОЛЬЗУЕМ ПОСЛЕДНИЙ ModelSize) ----------
   const modelsByType = useMemo(() => {
     const types = {};
 
@@ -152,14 +153,14 @@ const ModelsAnalytics = ({ filteredData }) => {
         types[t] = { name: t, count: 0, totalDataMB: 0, syncCount: 0 };
       }
       types[t].count += 1;
-      types[t].totalDataMB += parseFloat(m.totalDataMB);
+      types[t].totalDataMB += parseFloat(m.totalDataMB); // уже последний размер
       types[t].syncCount += m.syncCount;
     });
 
     return Object.values(types).sort((a, b) => b.syncCount - a.syncCount);
   }, [modelsRating]);
 
-  // ---------- График роста ----------
+  // ---------- График роста (ПОСЛЕДНЕЕ ЗНАЧЕНИЕ ModelSize ЗА ДЕНЬ) ----------
   const modelGrowthData = useMemo(() => {
     if (!selectedServerForGrowth || !selectedModelForGrowth) return [];
 
@@ -167,14 +168,26 @@ const ModelsAnalytics = ({ filteredData }) => {
       r => r['Сервер'] === selectedServerForGrowth && r['Имя файла'] === selectedModelForGrowth,
     );
 
+    // Группируем по дням и берем ПОСЛЕДНЕЕ значение за день
     const daily = {};
     data.forEach(r => {
       if (!r.parsedDate) return;
       const key = r.parsedDate.toLocaleDateString('ru-RU');
+      
       if (!daily[key]) {
-        daily[key] = { date: key, size: 0, ts: r.parsedDate.getTime() };
+        daily[key] = { 
+          date: key, 
+          size: 0, 
+          ts: r.parsedDate.getTime(),
+          lastUpdate: r.parsedDate
+        };
       }
-      daily[key].size += r.supportSize || 0;
+      
+      // ИЗМЕНЕНО: берем последнее значение за день, а не сумму
+      if (r.parsedDate >= daily[key].lastUpdate) {
+        daily[key].lastUpdate = r.parsedDate;
+        daily[key].size = r.modelSize || 0;
+      }
     });
 
     return Object.values(daily)
@@ -220,12 +233,12 @@ const ModelsAnalytics = ({ filteredData }) => {
           {/* ---------- Распределение по типам ---------- */}
           <div className="mb-8">
             <h3 className="text-md font-semibold text-gray-900 mb-4">
-              Распределение моделей по типам
+              Распределение моделей по типам (по последнему размеру модели)
             </h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Бублик (Donut Chart) */}
               <div>
-              238      <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
                     <Pie
                       data={modelsByType}
@@ -235,7 +248,6 @@ const ModelsAnalytics = ({ filteredData }) => {
                       cy="50%"
                       innerRadius={70}   
                       outerRadius={150}  
-
                     >
                       {modelsByType.map((entry, i) => (
                         <Cell key={`cell-${i}`} fill={COLORS[entry.name] || '#6b7280'} />
@@ -256,7 +268,7 @@ const ModelsAnalytics = ({ filteredData }) => {
                 </ResponsiveContainer>
               </div>
 
-              {/* Легенда справа (остаётся без изменений) */}
+              {/* Легенда справа */}
               <div className="space-y-3">
                 {modelsByType.map((type, i) => (
                   <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -283,7 +295,7 @@ const ModelsAnalytics = ({ filteredData }) => {
           {/* ---------- Топ-10 моделей ---------- */}
           <div className="mb-8">
             <h3 className="text-md font-semibold text-gray-900 mb-4">
-              Top-10 самых активных моделей
+              Top-10 самых активных моделей (размер - последняя синхронизация)
             </h3>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
@@ -294,7 +306,7 @@ const ModelsAnalytics = ({ filteredData }) => {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Сервер</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Тип</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Синхронизаций</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Объём (МБ)</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Размер модели (МБ)</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Пользователей</th>
                   </tr>
                 </thead>
@@ -333,7 +345,7 @@ const ModelsAnalytics = ({ filteredData }) => {
           {/* ---------- График роста модели ---------- */}
           <div>
             <h3 className="text-md font-semibold text-gray-900 mb-4">
-              Рост размера модели во времени
+              Рост размера модели во времени (последнее значение за день)
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -388,7 +400,7 @@ const ModelsAnalytics = ({ filteredData }) => {
                   />
                   <YAxis
                     tick={{ fontSize: 12 }}
-                    label={{ value: 'Размер (МБ)', angle: -90, position: 'insideLeft' }}
+                    label={{ value: 'Размер модели (МБ)', angle: -90, position: 'insideLeft' }}
                   />
                   <Tooltip />
                   <Legend />

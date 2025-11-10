@@ -1,7 +1,7 @@
 // utils/dataUtils.js
-// VERSION: 5.2 – ГАРАНТИРОВАННАЯ работа с SupportSize (байты)
+// VERSION: 6.0 – Поддержка SupportSize И ModelSize (байты)
 
-console.log('dataUtils.js v5.2 – SupportSize (байты) – FIXED');
+console.log('dataUtils.js v6.0 – SupportSize + ModelSize (байты)');
 
 /**
  * Bytes → MB
@@ -64,21 +64,21 @@ export const parseTSVData = (text) => {
 };
 
 /**
- * Обработка: SupportSize (байты) — с логированием
+ * Обработка: SupportSize и ModelSize (байты) — с логированием
  */
 export const processData = (rawData) => {
-  console.log('processData – extracting SupportSize (байты)');
+  console.log('processData – extracting SupportSize and ModelSize (байты)');
 
   const processed = rawData.map((record, idx) => {
-    // Ищем точное совпадение или с пробелами
+    // Извлекаем SupportSize
     let supportSize = 0;
-    const possibleKeys = [
+    const supportSizeKeys = [
       'SupportSize (байты)',
-      'SupportSize  (байты)',  // с двумя пробелами
+      'SupportSize  (байты)',
       'SupportSize(байты)',
     ];
 
-    for (const key of possibleKeys) {
+    for (const key of supportSizeKeys) {
       if (record.hasOwnProperty(key)) {
         supportSize = parseInt(record[key], 10) || 0;
         if (idx === 0) console.log(`Found SupportSize in column: "${key}" → ${supportSize} bytes`);
@@ -86,14 +86,33 @@ export const processData = (rawData) => {
       }
     }
 
-    if (idx === 0 && supportSize === 0) {
-      console.warn('SupportSize column not found! Available keys:', Object.keys(record));
+    // Извлекаем ModelSize
+    let modelSize = 0;
+    const modelSizeKeys = [
+      'ModelSize (байты)',
+      'ModelSize  (байты)',
+      'ModelSize(байты)',
+    ];
+
+    for (const key of modelSizeKeys) {
+      if (record.hasOwnProperty(key)) {
+        modelSize = parseInt(record[key], 10) || 0;
+        if (idx === 0) console.log(`Found ModelSize in column: "${key}" → ${modelSize} bytes`);
+        break;
+      }
+    }
+
+    if (idx === 0) {
+      if (supportSize === 0) console.warn('SupportSize column not found!');
+      if (modelSize === 0) console.warn('ModelSize column not found!');
+      console.log('Available columns:', Object.keys(record));
     }
 
     return {
       ...record,
       parsedDate: parseDate(record['Date (UTC)']),
-      supportSize, // ← ГАРАНТИРОВАННОЕ число
+      supportSize, // для статистики по пользователям (сумма синхронизаций)
+      modelSize,   // для статистики по моделям (последнее значение)
     };
   });
 
