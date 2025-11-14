@@ -1,6 +1,6 @@
 // components/ActiveProjects.jsx
 import React, { useMemo, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { bytesToMB } from '../utils/dataUtils';
 import { groupByProjects } from '../utils/projectParser';
 
@@ -19,7 +19,13 @@ const ActiveProjects = ({ filteredData }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [selectedProject, setSelectedProject] = useState(null);
   const [selectedSection, setSelectedSection] = useState(null);
-  const [sortBy, setSortBy] = useState('syncs'); // 'syncs' | 'users' | 'growth'
+  const [sortBy, setSortBy] = useState('syncs');
+  
+  // Пагинация для каждого уровня
+  const [projectsPage, setProjectsPage] = useState(1);
+  const [sectionsPage, setSectionsPage] = useState(1);
+  const [modelsPage, setModelsPage] = useState(1);
+  const itemsPerPage = 12; // 3 колонки × 4 ряда
 
   // Группируем данные по проектам
   const projectsData = useMemo(() => {
@@ -43,9 +49,6 @@ const ActiveProjects = ({ filteredData }) => {
         return sorted.sort((a, b) => b.totalSyncs - a.totalSyncs);
       case 'users':
         return sorted.sort((a, b) => b.usersCount - a.usersCount);
-      case 'growth':
-        // Можно добавить логику сортировки по росту
-        return sorted.sort((a, b) => b.totalSyncs - a.totalSyncs);
       default:
         return sorted;
     }
@@ -85,116 +88,207 @@ const ActiveProjects = ({ filteredData }) => {
     })).sort((a, b) => b.syncCount - a.syncCount);
   }, [selectedProject, selectedSection, projectsData]);
 
-  // Компонент плитки проекта
+  // Пагинация для проектов
+  const projectsTotalPages = Math.ceil(sortedProjects.length / itemsPerPage);
+  const projectsStartIndex = (projectsPage - 1) * itemsPerPage;
+  const currentProjects = sortedProjects.slice(projectsStartIndex, projectsStartIndex + itemsPerPage);
+
+  // Пагинация для разделов
+  const sectionsTotalPages = Math.ceil(sectionsList.length / itemsPerPage);
+  const sectionsStartIndex = (sectionsPage - 1) * itemsPerPage;
+  const currentSections = sectionsList.slice(sectionsStartIndex, sectionsStartIndex + itemsPerPage);
+
+  // Пагинация для моделей
+  const modelsTotalPages = Math.ceil(modelsList.length / itemsPerPage);
+  const modelsStartIndex = (modelsPage - 1) * itemsPerPage;
+  const currentModels = modelsList.slice(modelsStartIndex, modelsStartIndex + itemsPerPage);
+
+  // Сброс пагинации при переходе между уровнями
+  const handleProjectClick = (projectName) => {
+    setSelectedProject(projectName);
+    setSelectedSection(null);
+    setSectionsPage(1);
+    setModelsPage(1);
+  };
+
+  const handleSectionClick = (sectionName) => {
+    setSelectedSection(sectionName);
+    setModelsPage(1);
+  };
+
+  const handleBackToProjects = () => {
+    setSelectedProject(null);
+    setSelectedSection(null);
+    setProjectsPage(1);
+  };
+
+  const handleBackToSections = () => {
+    setSelectedSection(null);
+    setSectionsPage(1);
+  };
+
+  // Компонент пагинации
+  const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Назад
+        </button>
+        
+        <div className="flex gap-1">
+          {[...Array(Math.min(5, totalPages))].map((_, i) => {
+            let pageNum;
+            if (totalPages <= 5) {
+              pageNum = i + 1;
+            } else if (currentPage <= 3) {
+              pageNum = i + 1;
+            } else if (currentPage >= totalPages - 2) {
+              pageNum = totalPages - 4 + i;
+            } else {
+              pageNum = currentPage - 2 + i;
+            }
+            
+            return (
+              <button
+                key={pageNum}
+                onClick={() => onPageChange(pageNum)}
+                className={`w-8 h-8 text-sm rounded ${
+                  currentPage === pageNum
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Вперед
+        </button>
+      </div>
+    );
+  };
+
+  // Компонент плитки проекта (минималистичная)
   const ProjectCard = ({ project }) => (
     <div
-      onClick={() => {
-        setSelectedProject(project.name);
-        setSelectedSection(null);
-      }}
-      className="bg-white border-2 border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-lg transition cursor-pointer"
+      onClick={() => handleProjectClick(project.name)}
+      className="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition cursor-pointer"
     >
-      <div className="flex items-start justify-between mb-3">
-        <h3 className="text-lg font-bold text-gray-900">{project.name}</h3>
-        <div className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-semibold">
-          {project.sectionsCount} разделов
-        </div>
+      <div className="mb-3">
+        <h3 className="text-base font-semibold text-gray-900 mb-1">{project.name}</h3>
+        <div className="text-xs text-gray-500">{project.sectionsCount} разделов</div>
       </div>
       
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div className="bg-blue-50 rounded p-2">
-          <div className="text-gray-600 text-xs">Синхронизаций</div>
-          <div className="text-xl font-bold text-blue-600">{project.totalSyncs}</div>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <div className="text-xs text-gray-500">Синхронизаций</div>
+          <div className="text-lg font-semibold text-gray-900">{project.totalSyncs}</div>
         </div>
-        <div className="bg-green-50 rounded p-2">
-          <div className="text-gray-600 text-xs">Пользователей</div>
-          <div className="text-xl font-bold text-green-600">{project.usersCount}</div>
+        <div>
+          <div className="text-xs text-gray-500">Пользователей</div>
+          <div className="text-lg font-semibold text-gray-900">{project.usersCount}</div>
         </div>
       </div>
     </div>
   );
 
-  // Компонент плитки раздела
+  // Компонент плитки раздела (минималистичная с цветной меткой)
   const SectionCard = ({ section }) => (
     <div
-      onClick={() => setSelectedSection(section.name)}
-      className="bg-white border-2 border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-lg transition cursor-pointer"
-      style={{ borderLeftWidth: '6px', borderLeftColor: SECTION_COLORS[section.name] || '#6b7280' }}
+      onClick={() => handleSectionClick(section.name)}
+      className="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-500 hover:shadow-md transition cursor-pointer"
     >
-      <div className="flex items-start justify-between mb-3">
-        <h3 className="text-lg font-bold text-gray-900">{section.name}</h3>
-        <div className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-semibold">
-          {section.modelsCount} моделей
+      <div className="mb-3">
+        <div className="flex items-center gap-2 mb-1">
+          <div 
+            className="w-3 h-3 rounded-full" 
+            style={{ backgroundColor: SECTION_COLORS[section.name] || '#6b7280' }}
+          />
+          <h3 className="text-base font-semibold text-gray-900">{section.name}</h3>
         </div>
+        <div className="text-xs text-gray-500">{section.modelsCount} моделей</div>
       </div>
       
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        <div className="bg-blue-50 rounded p-2">
-          <div className="text-gray-600 text-xs">Синхронизаций</div>
-          <div className="text-xl font-bold text-blue-600">{section.totalSyncs}</div>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <div>
+          <div className="text-xs text-gray-500">Синхронизаций</div>
+          <div className="text-lg font-semibold text-gray-900">{section.totalSyncs}</div>
         </div>
-        <div className="bg-green-50 rounded p-2">
-          <div className="text-gray-600 text-xs">Пользователей</div>
-          <div className="text-xl font-bold text-green-600">{section.usersCount}</div>
+        <div>
+          <div className="text-xs text-gray-500">Пользователей</div>
+          <div className="text-lg font-semibold text-gray-900">{section.usersCount}</div>
         </div>
       </div>
     </div>
   );
 
-  // Компонент плитки модели (детальная)
+  // Компонент плитки модели (минималистичная)
   const ModelCard = ({ model }) => {
     const growthPercent = model.firstModelSize > 0 
       ? (((model.lastModelSize - model.firstModelSize) / model.firstModelSize) * 100).toFixed(1)
       : 0;
 
     return (
-      <div className="bg-white border border-gray-200 rounded-lg p-5 hover:shadow-lg transition">
-        <div className="mb-4">
-          <h4 className="text-md font-bold text-gray-900 mb-1 break-words">{model.name}</h4>
+      <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+        <div className="mb-3">
+          <h4 className="text-sm font-semibold text-gray-900 mb-1 break-words line-clamp-2">{model.name}</h4>
           <div className="text-xs text-gray-500">{model.server}</div>
         </div>
 
         {/* Статистика */}
-        <div className="grid grid-cols-3 gap-2 mb-4 text-xs">
-          <div className="bg-blue-50 rounded p-2">
-            <div className="text-gray-600">Синхр.</div>
-            <div className="text-lg font-bold text-blue-600">{model.syncCount}</div>
+        <div className="grid grid-cols-3 gap-2 mb-3 text-xs">
+          <div>
+            <div className="text-gray-500">Синхр.</div>
+            <div className="text-base font-semibold text-gray-900">{model.syncCount}</div>
           </div>
-          <div className="bg-green-50 rounded p-2">
-            <div className="text-gray-600">Польз.</div>
-            <div className="text-lg font-bold text-green-600">{model.usersCount}</div>
+          <div>
+            <div className="text-gray-500">Польз.</div>
+            <div className="text-base font-semibold text-gray-900">{model.usersCount}</div>
           </div>
-          <div className="bg-purple-50 rounded p-2">
-            <div className="text-gray-600">Рост</div>
-            <div className={`text-lg font-bold ${parseFloat(growthPercent) > 0 ? 'text-orange-600' : 'text-gray-600'}`}>
+          <div>
+            <div className="text-gray-500">Рост</div>
+            <div className={`text-base font-semibold ${parseFloat(growthPercent) > 0 ? 'text-orange-600' : 'text-gray-900'}`}>
               {growthPercent}%
             </div>
           </div>
         </div>
 
         {/* Размеры модели */}
-        <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-          <div className="bg-gray-50 rounded p-2">
-            <div className="text-gray-600">Начальный размер</div>
+        <div className="grid grid-cols-2 gap-2 mb-3 text-xs border-t border-gray-100 pt-3">
+          <div>
+            <div className="text-gray-500">Начальный</div>
             <div className="font-semibold text-gray-900">{model.firstModelSizeMB} МБ</div>
           </div>
-          <div className="bg-gray-50 rounded p-2">
-            <div className="text-gray-600">Текущий размер</div>
+          <div>
+            <div className="text-gray-500">Текущий</div>
             <div className="font-semibold text-gray-900">{model.lastModelSizeMB} МБ</div>
           </div>
         </div>
 
         {/* Мини-график активности */}
         {model.dailySyncsArray.length > 1 && (
-          <div className="mt-3">
-            <div className="text-xs text-gray-600 mb-1">Активность по дням</div>
-            <ResponsiveContainer width="100%" height={60}>
+          <div className="border-t border-gray-100 pt-3">
+            <div className="text-xs text-gray-500 mb-2">Активность</div>
+            <ResponsiveContainer width="100%" height={50}>
               <LineChart data={model.dailySyncsArray}>
                 <Line 
                   type="monotone" 
                   dataKey="count" 
                   stroke="#3b82f6" 
-                  strokeWidth={2}
+                  strokeWidth={1.5}
                   dot={false}
                 />
               </LineChart>
@@ -205,14 +299,11 @@ const ActiveProjects = ({ filteredData }) => {
     );
   };
 
-  // Хлебные крошки для навигации
+  // Хлебные крошки
   const Breadcrumbs = () => (
     <div className="flex items-center gap-2 text-sm mb-4">
       <button
-        onClick={() => {
-          setSelectedProject(null);
-          setSelectedSection(null);
-        }}
+        onClick={handleBackToProjects}
         className="text-blue-600 hover:text-blue-800 font-medium"
       >
         Все проекты
@@ -221,7 +312,7 @@ const ActiveProjects = ({ filteredData }) => {
         <>
           <span className="text-gray-400">/</span>
           <button
-            onClick={() => setSelectedSection(null)}
+            onClick={handleBackToSections}
             className="text-blue-600 hover:text-blue-800 font-medium"
           >
             {selectedProject}
@@ -245,7 +336,7 @@ const ActiveProjects = ({ filteredData }) => {
       >
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold text-gray-900">
-            📊 Активные проекты
+            Активные проекты
           </h2>
           {!isCollapsed && (
             <span className="text-sm text-gray-500">
@@ -253,7 +344,7 @@ const ActiveProjects = ({ filteredData }) => {
             </span>
           )}
         </div>
-        <button className="text-gray-500 hover:text-gray-700 transition">
+        <button className="text-gray-400 hover:text-gray-600">
           <svg
             className={`w-5 h-5 transform transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
             fill="none"
@@ -297,31 +388,52 @@ const ActiveProjects = ({ filteredData }) => {
 
           {/* Отображение плиток в зависимости от уровня */}
           {!selectedProject ? (
-            // Уровень 1: Проекты
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sortedProjects.map((project, idx) => (
-                <ProjectCard key={idx} project={project} />
-              ))}
-            </div>
+            <>
+              {/* Уровень 1: Проекты */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentProjects.map((project, idx) => (
+                  <ProjectCard key={idx} project={project} />
+                ))}
+              </div>
+              <Pagination 
+                currentPage={projectsPage} 
+                totalPages={projectsTotalPages} 
+                onPageChange={setProjectsPage} 
+              />
+            </>
           ) : !selectedSection ? (
-            // Уровень 2: Разделы
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {sectionsList.map((section, idx) => (
-                <SectionCard key={idx} section={section} />
-              ))}
-            </div>
+            <>
+              {/* Уровень 2: Разделы */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentSections.map((section, idx) => (
+                  <SectionCard key={idx} section={section} />
+                ))}
+              </div>
+              <Pagination 
+                currentPage={sectionsPage} 
+                totalPages={sectionsTotalPages} 
+                onPageChange={setSectionsPage} 
+              />
+            </>
           ) : (
-            // Уровень 3: Модели
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {modelsList.map((model, idx) => (
-                <ModelCard key={idx} model={model} />
-              ))}
-            </div>
+            <>
+              {/* Уровень 3: Модели */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {currentModels.map((model, idx) => (
+                  <ModelCard key={idx} model={model} />
+                ))}
+              </div>
+              <Pagination 
+                currentPage={modelsPage} 
+                totalPages={modelsTotalPages} 
+                onPageChange={setModelsPage} 
+              />
+            </>
           )}
 
           {/* Пустое состояние */}
           {sortedProjects.length === 0 && (
-            <div className="text-center py-12 text-gray-500">
+            <div className="text-center py-12 text-gray-400">
               Нет данных о проектах в выбранном диапазоне дат
             </div>
           )}

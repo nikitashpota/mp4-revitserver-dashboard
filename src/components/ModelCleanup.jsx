@@ -4,11 +4,13 @@ import { bytesToMB } from '../utils/dataUtils';
 
 const ModelCleanup = ({ filteredData }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(20);
 
   // Пороговые значения SupportSize в МБ
   const THRESHOLDS = {
-    WARNING: 150,  // Желтая зона
-    CRITICAL: 200, // Красная зона
+    WARNING: 150,
+    CRITICAL: 200,
   };
 
   // Анализ моделей по SupportSize
@@ -29,7 +31,7 @@ const ModelCleanup = ({ filteredData }) => {
           model,
           server,
           syncCount: 0,
-          maxSupportSize: 0,
+          lastSupportSize: 0,
           lastSync: null,
           users: new Set(),
         };
@@ -37,13 +39,9 @@ const ModelCleanup = ({ filteredData }) => {
 
       stats[key].syncCount += 1;
       
-      // Храним максимальный SupportSize
-      if (supportSize > stats[key].maxSupportSize) {
-        stats[key].maxSupportSize = supportSize;
-      }
-
       if (record.parsedDate && (!stats[key].lastSync || record.parsedDate > stats[key].lastSync)) {
         stats[key].lastSync = record.parsedDate;
+        stats[key].lastSupportSize = supportSize;
       }
 
       if (record['User']) stats[key].users.add(record['User']);
@@ -51,19 +49,16 @@ const ModelCleanup = ({ filteredData }) => {
 
     return Object.values(stats)
       .map(stat => {
-        const supportSizeMB = parseFloat(bytesToMB(stat.maxSupportSize));
+        const supportSizeMB = parseFloat(bytesToMB(stat.lastSupportSize));
         let status = 'good';
         let statusLabel = 'Норма';
-        let statusColor = 'green';
 
         if (supportSizeMB >= THRESHOLDS.CRITICAL) {
           status = 'critical';
           statusLabel = 'Требует очистки';
-          statusColor = 'red';
         } else if (supportSizeMB >= THRESHOLDS.WARNING) {
           status = 'warning';
           statusLabel = 'Требует внимания';
-          statusColor = 'yellow';
         }
 
         return {
@@ -71,58 +66,66 @@ const ModelCleanup = ({ filteredData }) => {
           supportSizeMB,
           status,
           statusLabel,
-          statusColor,
           usersCount: stat.users.size,
         };
       })
-      .filter(stat => stat.status !== 'good') // Показываем только проблемные
       .sort((a, b) => b.supportSizeMB - a.supportSizeMB);
   }, [filteredData]);
 
-  // Статистика по зонам
+  // Статистика
   const criticalModels = modelsAnalysis.filter(m => m.status === 'critical').length;
   const warningModels = modelsAnalysis.filter(m => m.status === 'warning').length;
-  const totalProblematicSyncs = modelsAnalysis.reduce((sum, m) => sum + m.syncCount, 0);
+  const goodModels = modelsAnalysis.length - criticalModels - warningModels;
 
-  const getStatusBadge = (status, label) => {
-    const colors = {
-      critical: 'bg-red-100 text-red-800 border-red-200',
-      warning: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-    };
-    
-    return (
-      <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${colors[status]}`}>
-        {label}
-      </span>
-    );
+  // Пагинация
+  const totalPages = Math.ceil(modelsAnalysis.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentModels = modelsAnalysis.slice(startIndex, endIndex);
+
+  // Сброс страницы при изменении itemsPerPage
+  const handleItemsPerPageChange = (newValue) => {
+    setItemsPerPage(newValue);
+    setCurrentPage(1);
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'critical': return 'text-red-600';
+      case 'warning': return 'text-yellow-600';
+      case 'good': return 'text-green-600';
+      default: return 'text-gray-600';
+    }
   };
 
   return (
     <div className="bg-white rounded-lg shadow mb-6">
+      {/* Заголовок */}
       <div 
         className="px-6 py-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold text-gray-900">
-            Очистка моделей (анализ SupportSize)
+            Контроль чистоты моделей
           </h2>
-          {!isCollapsed && (
-            <div className="flex gap-2 text-sm">
-              {criticalModels > 0 && (
-                <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full font-medium">
-                  {criticalModels} критичных
-                </span>
-              )}
-              {warningModels > 0 && (
-                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
-                  {warningModels} требуют внимания
-                </span>
-              )}
-            </div>
-          )}
+          <div className="flex gap-3 text-xs">
+            {criticalModels > 0 && (
+              <span className="text-red-600 font-medium">
+                {criticalModels} критичных
+              </span>
+            )}
+            {warningModels > 0 && (
+              <span className="text-yellow-600 font-medium">
+                {warningModels} требуют внимания
+              </span>
+            )}
+            <span className="text-gray-500">
+              Всего: {modelsAnalysis.length}
+            </span>
+          </div>
         </div>
-        <button className="text-gray-500 hover:text-gray-700 transition">
+        <button className="text-gray-400 hover:text-gray-600">
           <svg
             className={`w-5 h-5 transform transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
             fill="none"
@@ -136,125 +139,157 @@ const ModelCleanup = ({ filteredData }) => {
 
       {!isCollapsed && (
         <div className="p-6">
-          {/* Пороговые значения и краткая статистика */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {/* Критерии */}
-            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Критерии оценки SupportSize</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                    <span className="text-gray-700">Норма</span>
-                  </div>
-                  <span className="font-semibold text-gray-900">&lt; 150 МБ</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <span className="text-gray-700">Требует внимания</span>
-                  </div>
-                  <span className="font-semibold text-gray-900">150-199 МБ</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <span className="text-gray-700">Требует очистки</span>
-                  </div>
-                  <span className="font-semibold text-gray-900">≥ 200 МБ</span>
-                </div>
+          {/* Компактная статистика */}
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
+            <div className="flex gap-8 text-sm">
+              <div>
+                <span className="text-gray-500">Всего:</span>
+                <span className="ml-2 font-semibold text-gray-900">{modelsAnalysis.length}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Критичных:</span>
+                <span className="ml-2 font-semibold text-red-600">{criticalModels}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Требуют внимания:</span>
+                <span className="ml-2 font-semibold text-yellow-600">{warningModels}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">В норме:</span>
+                <span className="ml-2 font-semibold text-green-600">{goodModels}</span>
               </div>
             </div>
 
-            {/* Сводка */}
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Сводка по проблемным моделям</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Всего проблемных моделей:</span>
-                  <span className="font-bold text-gray-900">{modelsAnalysis.length}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Критичных (≥200 МБ):</span>
-                  <span className="font-bold text-red-600">{criticalModels}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Требуют внимания (150-199):</span>
-                  <span className="font-bold text-yellow-600">{warningModels}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-700">Синхронизаций всего:</span>
-                  <span className="font-bold text-blue-600">{totalProblematicSyncs}</span>
-                </div>
-              </div>
+            {/* Критерии (компактно) */}
+            <div className="flex gap-4 text-xs text-gray-500">
+              <span>Норма: &lt;150 МБ</span>
+              <span>Внимание: 150-199</span>
+              <span>Критично: ≥200</span>
             </div>
           </div>
 
-          {/* Таблица проблемных моделей */}
+          {/* Управление пагинацией */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-gray-600">Показывать:</span>
+              <select
+                value={itemsPerPage}
+                onChange={(e) => handleItemsPerPageChange(Number(e.target.value))}
+                className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={modelsAnalysis.length}>Все ({modelsAnalysis.length})</option>
+              </select>
+              <span className="text-gray-500">
+                {startIndex + 1}–{Math.min(endIndex, modelsAnalysis.length)} из {modelsAnalysis.length}
+              </span>
+            </div>
+
+            {/* Навигация по страницам */}
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Назад
+                </button>
+                
+                <div className="flex gap-1">
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => {
+                    let pageNum;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 text-sm rounded ${
+                          currentPage === pageNum
+                            ? 'bg-blue-600 text-white'
+                            : 'border border-gray-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Вперед
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Минималистичная таблица */}
           {modelsAnalysis.length > 0 ? (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Статус
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Модель
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       Сервер
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Max SupportSize (МБ)
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                      Support (МБ)
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Синхронизаций
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      Синхр.
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Пользователей
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      Польз.
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Последняя синхронизация
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Статус
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {modelsAnalysis.map((model, idx) => (
+                <tbody className="divide-y divide-gray-100">
+                  {currentModels.map((model, idx) => (
                     <tr 
                       key={idx} 
-                      className={`hover:bg-gray-50 ${
-                        model.status === 'critical' ? 'bg-red-50' : 
-                        model.status === 'warning' ? 'bg-yellow-50' : ''
-                      }`}
+                      className="hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {getStatusBadge(model.status, model.statusLabel)}
+                      <td className="px-4 py-3 text-sm text-gray-900 max-w-md">
+                        <div className="truncate">{model.model}</div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
-                        <div className="font-medium truncate">{model.model}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-4 py-3 text-sm text-gray-600">
                         {model.server}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span className={`font-bold ${
-                          model.status === 'critical' ? 'text-red-700' : 
-                          model.status === 'warning' ? 'text-yellow-700' : 'text-gray-900'
-                        }`}>
-                          {model.supportSizeMB}
-                        </span>
+                      <td className={`px-4 py-3 text-sm text-right font-semibold ${getStatusColor(model.status)}`}>
+                        {model.supportSizeMB}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {model.syncCount}
-                        </span>
+                      <td className="px-4 py-3 text-sm text-gray-600 text-center">
+                        {model.syncCount}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
+                      <td className="px-4 py-3 text-sm text-gray-600 text-center">
                         {model.usersCount}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        {model.lastSync ? model.lastSync.toLocaleDateString('ru-RU') : 'Н/Д'}
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-medium ${getStatusColor(model.status)}`}>
+                          {model.statusLabel}
+                        </span>
                       </td>
                     </tr>
                   ))}
@@ -262,34 +297,33 @@ const ModelCleanup = ({ filteredData }) => {
               </table>
             </div>
           ) : (
-            <div className="text-center py-12 bg-green-50 rounded-lg border border-green-200">
-              <div className="text-green-600 text-lg font-semibold mb-2">
-                Все модели в норме!
-              </div>
-              <div className="text-green-700 text-sm">
-                Нет моделей с SupportSize ≥ 150 МБ
-              </div>
+            <div className="text-center py-12 text-gray-400">
+              Нет данных о моделях
             </div>
           )}
 
-          {/* Рекомендации */}
-          {modelsAnalysis.length > 0 && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                <div>
-                  <div className="font-semibold text-blue-800 mb-2">Рекомендации по очистке</div>
-                  <ul className="text-sm text-blue-700 space-y-1">
-                    <li>• Удалите неиспользуемые семейства и виды</li>
-                    <li>• Очистите неиспользуемые импортированные CAD-файлы</li>
-                    <li>• Выполните аудит модели и исправьте ошибки</li>
-                    <li>• Удалите неиспользуемые предупреждения и элементы</li>
-                    <li>• Рассмотрите возможность разделения больших моделей на части</li>
-                  </ul>
-                </div>
-              </div>
+          {/* Повторная навигация внизу (для удобства) */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-4 pt-4 border-t border-gray-100">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Назад
+              </button>
+              
+              <span className="text-sm text-gray-600">
+                Страница {currentPage} из {totalPages}
+              </span>
+
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Вперед
+              </button>
             </div>
           )}
         </div>
