@@ -187,7 +187,7 @@ function App() {
             <ModelsAnalytics filteredData={filteredData} />
 
             {/* Статистика по пользователям */}
-            <UserStatsTable userStats={userStats} />
+            <UserStatsTable userStats={userStats} filteredData={filteredData} />
 
             {/* График активности */}
             <ActivityChart

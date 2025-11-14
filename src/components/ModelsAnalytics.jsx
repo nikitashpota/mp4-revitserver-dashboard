@@ -21,47 +21,60 @@ const extractModelType = (filename) => {
   const upper = filename.toUpperCase();
 
   if (/[_\s]АР[\d.]*[_\s]?/i.test(upper) || /[_\s]AR[\d.]*[_\s]?/i.test(upper))
-    return 'АР (Архитектура)';
+    return 'АР';
   if (/[_\s]АИ[\d.]*[_\s]?/i.test(upper) || /[_\s]AI[\d.]*[_\s]?/i.test(upper))
-    return 'АИ (Интерьеры)';
+    return 'АИ';
   if (
     /[_\s]КР[\d.]*[_\s]?/i.test(upper) ||
     /[_\s]КЖ[\d.]*[_\s]?/i.test(upper) ||
     /[_\s]КМ[\d.]*[_\s]?/i.test(upper)
   )
-    return 'КР (Конструкции)';
+    return 'КР';
   if (/[_\s]ОВ[\d.]*[_\s]?/i.test(upper) || /[_\s]OV[\d.]*[_\s]?/i.test(upper))
-    return 'ОВ (Вентиляция)';
+    return 'ОВ';
   if (/[_\s]ВК[\d.]*[_\s]?/i.test(upper) || /[_\s]VK[\d.]*[_\s]?/i.test(upper))
-    return 'ВК (Водоснабжение)';
+    return 'ВК';
   if (
     /[_\s]ЭМ[\d.]*[_\s]?/i.test(upper) ||
     /[_\s]ЭО[\d.]*[_\s]?/i.test(upper) ||
     /[_\s]EM[\d.]*[_\s]?/i.test(upper)
   )
-    return 'ЭОМ (Электрика)';
+    return 'ЭОМ';
   if (/[_\s]ГП[\d.]*[_\s]?/i.test(upper) || /[_\s]GP[\d.]*[_\s]?/i.test(upper))
-    return 'ГП (Генплан)';
+    return 'ГП';
 
   return 'Прочее';
 };
 
 const COLORS = {
-  'АР (Архитектура)': '#3b82f6',
-  'АИ (Интерьеры)': '#0e3573ff',
-  'КР (Конструкции)': '#10b981',
-  'ОВ (Вентиляция)': '#8b5cf6',
-  'ВК (Водоснабжение)': '#f59e0b',
-  'ЭОМ (Электрика)': '#ec4899',
-  'ГП (Генплан)': '#06b6d4',
+  'АР': '#3b82f6',
+  'АИ': '#0e3573ff',
+  'КР': '#10b981',
+  'ОВ': '#8b5cf6',
+  'ВК': '#f59e0b',
+  'ЭОМ': '#ec4899',
+  'ГП': '#06b6d4',
   'Прочее': '#6b7280',
+};
+
+const TYPE_LABELS = {
+  'АР': 'Архитектура',
+  'АИ': 'Интерьеры',
+  'КР': 'Конструкции',
+  'ОВ': 'Вентиляция',
+  'ВК': 'Водоснабжение',
+  'ЭОМ': 'Электрика',
+  'ГП': 'Генплан',
+  'Прочее': 'Прочее',
 };
 
 const ModelsAnalytics = ({ filteredData }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
 
   // ---------- Данные для серверов и моделей ----------
-  const { serverOptions, modelOptionsByServer, serverModelMap } = useMemo(() => {
+  const { serverOptions, modelOptionsByServer } = useMemo(() => {
     const serversSet = new Set();
     const map = {};
 
@@ -74,7 +87,10 @@ const ModelsAnalytics = ({ filteredData }) => {
       map[srv].add(mdl);
     });
 
-    const serverOpts = [{ value: '', label: 'Выберите сервер' }, ...Array.from(serversSet).map(s => ({ value: s, label: s }))];
+    const serverOpts = [
+      { value: '', label: 'Выберите сервер' },
+      ...Array.from(serversSet).map(s => ({ value: s, label: s }))
+    ];
 
     const modelOptsBySrv = {};
     Object.entries(map).forEach(([srv, modelsSet]) => {
@@ -84,7 +100,7 @@ const ModelsAnalytics = ({ filteredData }) => {
       ];
     });
 
-    return { serverOptions: serverOpts, modelOptionsByServer: modelOptsBySrv, serverModelMap: map };
+    return { serverOptions: serverOpts, modelOptionsByServer: modelOptsBySrv };
   }, [filteredData]);
 
   const [selectedServerForGrowth, setSelectedServerForGrowth] = useState('');
@@ -94,14 +110,14 @@ const ModelsAnalytics = ({ filteredData }) => {
     opt => {
       const srv = opt?.value ?? '';
       setSelectedServerForGrowth(srv);
-      setSelectedModelForGrowth(''); // сбрасываем модель при смене сервера
+      setSelectedModelForGrowth('');
     },
     [],
   );
 
   const handleModelChange = useCallback(opt => setSelectedModelForGrowth(opt?.value ?? ''), []);
 
-  // ---------- Рейтинг моделей (ИСПОЛЬЗУЕМ ПОСЛЕДНИЙ ModelSize) ----------
+  // ---------- Рейтинг моделей (СОРТИРОВКА ПО РАЗМЕРУ) ----------
   const modelsRating = useMemo(() => {
     const stats = {};
 
@@ -116,7 +132,7 @@ const ModelsAnalytics = ({ filteredData }) => {
           model,
           server,
           syncCount: 0,
-          lastModelSize: 0,  // ИЗМЕНЕНО: храним последний размер
+          lastModelSize: 0,
           lastSync: null,
           users: new Set(),
         };
@@ -124,7 +140,6 @@ const ModelsAnalytics = ({ filteredData }) => {
 
       stats[key].syncCount += 1;
 
-      // ИЗМЕНЕНО: берем последнее значение ModelSize, а не сумму
       if (record.parsedDate && (!stats[key].lastSync || record.parsedDate > stats[key].lastSync)) {
         stats[key].lastSync = record.parsedDate;
         stats[key].lastModelSize = record.modelSize || 0;
@@ -136,31 +151,37 @@ const ModelsAnalytics = ({ filteredData }) => {
     return Object.values(stats)
       .map(stat => ({
         ...stat,
-        totalDataMB: bytesToMB(stat.lastModelSize), // ИЗМЕНЕНО: используем последний размер
+        totalDataMB: parseFloat(bytesToMB(stat.lastModelSize)),
+        totalDataGB: parseFloat(bytesToMB(stat.lastModelSize)) / 1024,
         usersCount: stat.users.size,
         type: extractModelType(stat.model),
       }))
-      .sort((a, b) => b.syncCount - a.syncCount);
+      .sort((a, b) => b.totalDataMB - a.totalDataMB); // ИЗМЕНЕНО: сортировка по размеру
   }, [filteredData]);
 
-  // ---------- Распределение по типам (ИСПОЛЬЗУЕМ ПОСЛЕДНИЙ ModelSize) ----------
+  // ---------- Распределение по типам (в ГБ) ----------
   const modelsByType = useMemo(() => {
     const types = {};
 
     modelsRating.forEach(m => {
       const t = m.type;
       if (!types[t]) {
-        types[t] = { name: t, count: 0, totalDataMB: 0, syncCount: 0 };
+        types[t] = { name: t, count: 0, totalDataGB: 0, syncCount: 0 };
       }
       types[t].count += 1;
-      types[t].totalDataMB += parseFloat(m.totalDataMB); // уже последний размер
+      types[t].totalDataGB += m.totalDataGB;
       types[t].syncCount += m.syncCount;
     });
 
-    return Object.values(types).sort((a, b) => b.syncCount - a.syncCount);
+    return Object.values(types).sort((a, b) => b.totalDataGB - a.totalDataGB);
   }, [modelsRating]);
 
-  // ---------- График роста (ПОСЛЕДНЕЕ ЗНАЧЕНИЕ ModelSize ЗА ДЕНЬ) ----------
+  // Вычисляем общий размер для процентов
+  const totalGB = useMemo(() => {
+    return modelsByType.reduce((sum, type) => sum + type.totalDataGB, 0);
+  }, [modelsByType]);
+
+  // ---------- График роста ----------
   const modelGrowthData = useMemo(() => {
     if (!selectedServerForGrowth || !selectedModelForGrowth) return [];
 
@@ -168,7 +189,6 @@ const ModelsAnalytics = ({ filteredData }) => {
       r => r['Сервер'] === selectedServerForGrowth && r['Имя файла'] === selectedModelForGrowth,
     );
 
-    // Группируем по дням и берем ПОСЛЕДНЕЕ значение за день
     const daily = {};
     data.forEach(r => {
       if (!r.parsedDate) return;
@@ -183,7 +203,6 @@ const ModelsAnalytics = ({ filteredData }) => {
         };
       }
       
-      // ИЗМЕНЕНО: берем последнее значение за день, а не сумму
       if (r.parsedDate >= daily[key].lastUpdate) {
         daily[key].lastUpdate = r.parsedDate;
         daily[key].size = r.modelSize || 0;
@@ -195,7 +214,70 @@ const ModelsAnalytics = ({ filteredData }) => {
       .map(d => ({ date: d.date, sizeMB: parseFloat(bytesToMB(d.size)) }));
   }, [filteredData, selectedServerForGrowth, selectedModelForGrowth]);
 
-  const top10Models = modelsRating.slice(0, 10);
+  // ---------- Пагинация ----------
+  const totalPages = Math.ceil(modelsRating.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentModels = modelsRating.slice(startIndex, startIndex + itemsPerPage);
+
+  // Компонент пагинации
+  const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Назад
+        </button>
+        
+        <div className="flex gap-1">
+          {[...Array(Math.min(5, totalPages))].map((_, i) => {
+            let pageNum;
+            if (totalPages <= 5) {
+              pageNum = i + 1;
+            } else if (currentPage <= 3) {
+              pageNum = i + 1;
+            } else if (currentPage >= totalPages - 2) {
+              pageNum = totalPages - 4 + i;
+            } else {
+              pageNum = currentPage - 2 + i;
+            }
+            
+            return (
+              <button
+                key={pageNum}
+                onClick={() => onPageChange(pageNum)}
+                className={`w-8 h-8 text-sm rounded ${
+                  currentPage === pageNum
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Вперед
+        </button>
+      </div>
+    );
+  };
+
+  // ДОБАВЛЕНО: Функция для отображения процентов на кольце
+  const renderLabel = (entry) => {
+    const percent = totalGB > 0 ? ((entry.totalDataGB / totalGB) * 100).toFixed(1) : 0;
+    return `${percent}%`;
+  };
 
   // ---------- Стили react-select ----------
   const selectStyles = {
@@ -213,10 +295,17 @@ const ModelsAnalytics = ({ filteredData }) => {
         className="px-6 py-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
-        <h2 className="text-lg font-semibold text-gray-900">
-          Аналитика по моделям
-        </h2>
-        <button className="text-gray-500 hover:text-gray-700 transition">
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Аналитика по моделям
+          </h2>
+          {!isCollapsed && (
+            <span className="text-sm text-gray-500">
+              {modelsRating.length} моделей
+            </span>
+          )}
+        </div>
+        <button className="text-gray-400 hover:text-gray-600">
           <svg
             className={`w-5 h-5 transform transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
             fill="none"
@@ -233,21 +322,23 @@ const ModelsAnalytics = ({ filteredData }) => {
           {/* ---------- Распределение по типам ---------- */}
           <div className="mb-8">
             <h3 className="text-md font-semibold text-gray-900 mb-4">
-              Распределение моделей по типам (по последнему размеру модели)
+              Распределение моделей по разделам
             </h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Бублик (Donut Chart) */}
-              <div>
-                <ResponsiveContainer width="100%" height={300}>
+              {/* ИСПРАВЛЕНО: Donut Chart с центрированием и процентами */}
+              <div className="flex items-center justify-center">
+                <ResponsiveContainer width="100%" height={350}>
                   <PieChart>
                     <Pie
                       data={modelsByType}
-                      dataKey="syncCount"
+                      dataKey="totalDataGB"
                       nameKey="name"
                       cx="50%"
                       cy="50%"
                       innerRadius={70}   
-                      outerRadius={150}  
+                      outerRadius={120}
+                      label={renderLabel}
+                      labelLine={false}
                     >
                       {modelsByType.map((entry, i) => (
                         <Cell key={`cell-${i}`} fill={COLORS[entry.name] || '#6b7280'} />
@@ -260,31 +351,33 @@ const ModelsAnalytics = ({ filteredData }) => {
                         borderRadius: '8px',
                       }}
                       formatter={(value, name) => [
-                        `${value} синхр.`,
-                        name,
+                        `${value.toFixed(2)} ГБ`,
+                        TYPE_LABELS[name] || name,
                       ]}
                     />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Легенда справа */}
-              <div className="space-y-3">
+              {/* Компактная легенда */}
+              <div className="space-y-2">
                 {modelsByType.map((type, i) => (
                   <div key={i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <div
-                        className="w-4 h-4 rounded"
+                        className="w-3 h-3 rounded-full"
                         style={{ backgroundColor: COLORS[type.name] || '#6b7280' }}
                       />
                       <div>
-                        <div className="font-medium text-sm text-gray-900">{type.name}</div>
+                        <div className="text-sm font-medium text-gray-900">
+                          {type.name} · {TYPE_LABELS[type.name]}
+                        </div>
                         <div className="text-xs text-gray-500">{type.count} моделей</div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-semibold text-gray-900">{type.syncCount} синхр.</div>
-                      <div className="text-xs text-gray-500">{type.totalDataMB.toFixed(2)} МБ</div>
+                      <div className="text-sm font-semibold text-gray-900">{type.syncCount}</div>
+                      <div className="text-xs text-gray-500">{type.totalDataGB.toFixed(2)} ГБ</div>
                     </div>
                   </div>
                 ))}
@@ -292,60 +385,78 @@ const ModelsAnalytics = ({ filteredData }) => {
             </div>
           </div>
 
-          {/* ---------- Топ-10 моделей ---------- */}
+          {/* ---------- Таблица всех моделей с пагинацией ---------- */}
           <div className="mb-8">
-            <h3 className="text-md font-semibold text-gray-900 mb-4">
-              Top-10 самых активных моделей (размер - последняя синхронизация)
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Модель</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Сервер</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Тип</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Синхронизаций</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Размер модели (МБ)</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Пользователей</th>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-md font-semibold text-gray-900">
+                Все модели (по размеру)
+              </h3>
+              <div className="text-sm text-gray-500">
+                {startIndex + 1}–{Math.min(startIndex + itemsPerPage, modelsRating.length)} из {modelsRating.length}
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-gray-200">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Модель</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Сервер</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Раздел</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Синхр.</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Размер (МБ)</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Польз.</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {top10Models.map((model, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                        {i + 1}
+                <tbody className="divide-y divide-gray-100">
+                  {currentModels.map((model, i) => (
+                    <tr key={i} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-4 py-3 text-sm text-gray-500">
+                        {startIndex + i + 1}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">{model.model}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{model.server}</td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <td className="px-4 py-3 text-sm text-gray-900 max-w-md">
+                        <div className="truncate font-medium">{model.model}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {model.server}
+                      </td>
+                      <td className="px-4 py-3 text-center">
                         <span
-                          className="px-2 py-1 rounded text-xs font-medium text-white"
+                          className="inline-flex items-center px-2 py-1 rounded text-xs font-medium text-white"
                           style={{ backgroundColor: COLORS[model.type] || '#6b7280' }}
                         >
                           {model.type}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                           {model.syncCount}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                        {model.totalDataMB}
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right">
+                        {model.totalDataMB.toFixed(1)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{model.usersCount}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 text-center">
+                        {model.usersCount}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+
+            <Pagination 
+              currentPage={currentPage} 
+              totalPages={totalPages} 
+              onPageChange={setCurrentPage} 
+            />
           </div>
 
           {/* ---------- График роста модели ---------- */}
           <div>
             <h3 className="text-md font-semibold text-gray-900 mb-4">
-              Рост размера модели во времени (последнее значение за день)
+              Рост размера модели во времени
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -365,7 +476,7 @@ const ModelsAnalytics = ({ filteredData }) => {
                 />
               </div>
 
-              {/* Модель (с поиском) */}
+              {/* Модель */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Модель
@@ -390,7 +501,7 @@ const ModelsAnalytics = ({ filteredData }) => {
             {modelGrowthData.length > 0 ? (
               <ResponsiveContainer width="100%" height={350}>
                 <LineChart data={modelGrowthData}>
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis
                     dataKey="date"
                     tick={{ fontSize: 12 }}
@@ -402,26 +513,39 @@ const ModelsAnalytics = ({ filteredData }) => {
                     tick={{ fontSize: 12 }}
                     label={{ value: 'Размер модели (МБ)', angle: -90, position: 'insideLeft' }}
                   />
-                  <Tooltip />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#fff',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                    }}
+                  />
                   <Legend />
                   <Line
                     type="monotone"
                     dataKey="sizeMB"
                     stroke="#3b82f6"
                     strokeWidth={2}
-                    name="Размер модели (МБ)"
-                    dot={{ r: 4 }}
+                    name="Размер (МБ)"
+                    dot={{ r: 3 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <div className="text-center py-12 text-gray-500">
+              <div className="text-center py-12 text-gray-400">
                 {selectedServerForGrowth && selectedModelForGrowth
                   ? 'Недостаточно данных для построения графика'
                   : 'Выберите сервер и модель для отображения графика роста'}
               </div>
             )}
           </div>
+
+          {/* Пустое состояние */}
+          {modelsRating.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              Нет данных о моделях в выбранном диапазоне дат
+            </div>
+          )}
         </div>
       )}
     </div>

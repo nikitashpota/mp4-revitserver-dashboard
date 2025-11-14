@@ -1,10 +1,11 @@
 // components/ServersStats.jsx
 import React, { useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { bytesToMB } from '../utils/dataUtils';
 
 const ServersStats = ({ filteredData }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12; // 3 колонки × 4 ряда
 
   // Определение зон для каждого показателя
   const getZone = (metric, value) => {
@@ -134,7 +135,6 @@ const ServersStats = ({ filteredData }) => {
         modelsCount,
         usersCount,
         avgModelSizeMB,
-        // Зоны
         userZone,
         modelZone,
         avgSizeZone,
@@ -148,80 +148,177 @@ const ServersStats = ({ filteredData }) => {
     });
   }, [filteredData]);
 
-  // Функция для получения цвета и иконки зоны
-  const getZoneStyle = (zone) => {
-    switch (zone) {
-      case 'green':
-        return {
-          textColor: 'text-green-700',
-          iconColor: 'text-green-600',
-          label: 'Оптимально'
-        };
-      case 'yellow':
-        return {
-          textColor: 'text-yellow-700',
-          iconColor: 'text-yellow-600',
-          label: 'Требует внимания'
-        };
-      case 'red':
-        return {
-          textColor: 'text-red-700',
-          iconColor: 'text-red-600',
-          label: 'Критично'
-        };
-      default:
-        return {
-          textColor: 'text-gray-700',
-          iconColor: 'text-gray-600',
-          label: 'Неизвестно'
-        };
-    }
-  };
-
-  // Функция для получения рекомендаций
-  const getRecommendations = (zone, stats) => {
-    const recommendations = [];
-    
-    if (zone === 'red') {
-      if (stats.usersCount > 70) {
-        recommendations.push('КРИТИЧНО: Требуется новый Host сервер - превышен лимит пользователей');
-      }
-      if (stats.modelsCount > 100) {
-        recommendations.push('КРИТИЧНО: Разделите модели на несколько серверов');
-      }
-      if (stats.avgModelSizeMB > 600) {
-        recommendations.push('КРИТИЧНО: Очень большие модели замедляют работу - оптимизируйте их');
-      }
-      if (stats.totalDataGB > 100) {
-        recommendations.push('КРИТИЧНО: Проверьте свободное место на сервере и производительность storage');
-      }
-    } else if (zone === 'yellow') {
-      if (stats.usersCount > 20) {
-        recommendations.push('Рекомендуется настроить Accelerator для удаленных офисов');
-      }
-      if (stats.modelsCount > 60) {
-        recommendations.push('Рассмотрите возможность архивирования завершенных проектов');
-      }
-      if (stats.avgModelSizeMB > 400) {
-        recommendations.push('Модели становятся большими - следите за их оптимизацией');
-      }
-      if (stats.totalDataGB >= 50) {
-        recommendations.push('Проверьте доступное место на сервере');
-      }
-      recommendations.push('Следите за ростом нагрузки на сервер');
-    } else {
-      recommendations.push('Сервер работает оптимально');
-      recommendations.push('Никаких действий не требуется');
-    }
-    
-    return recommendations;
-  };
-
   // Общая статистика
-  const totalServers = serversStats.length;
   const criticalServers = serversStats.filter(s => s.overallZone === 'red').length;
   const warningServers = serversStats.filter(s => s.overallZone === 'yellow').length;
   const healthyServers = serversStats.filter(s => s.overallZone === 'green').length;
+
+  // Функция для получения цвета зоны
+  const getZoneColor = (zone) => {
+    switch (zone) {
+      case 'green': return '#10b981';
+      case 'yellow': return '#f59e0b';
+      case 'red': return '#ef4444';
+      default: return '#6b7280';
+    }
+  };
+
+  const getZoneLabel = (zone) => {
+    switch (zone) {
+      case 'green': return 'Оптимально';
+      case 'yellow': return 'Внимание';
+      case 'red': return 'Критично';
+      default: return 'Неизвестно';
+    }
+  };
+
+  // Пагинация
+  const totalPages = Math.ceil(serversStats.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentServers = serversStats.slice(startIndex, startIndex + itemsPerPage);
+
+  // Компонент пагинации
+  const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage === 1}
+          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Назад
+        </button>
+        
+        <div className="flex gap-1">
+          {[...Array(Math.min(5, totalPages))].map((_, i) => {
+            let pageNum;
+            if (totalPages <= 5) {
+              pageNum = i + 1;
+            } else if (currentPage <= 3) {
+              pageNum = i + 1;
+            } else if (currentPage >= totalPages - 2) {
+              pageNum = totalPages - 4 + i;
+            } else {
+              pageNum = currentPage - 2 + i;
+            }
+            
+            return (
+              <button
+                key={pageNum}
+                onClick={() => onPageChange(pageNum)}
+                className={`w-8 h-8 text-sm rounded ${
+                  currentPage === pageNum
+                    ? 'bg-blue-600 text-white'
+                    : 'border border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage === totalPages}
+          className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Вперед
+        </button>
+      </div>
+    );
+  };
+
+  // Компонент карточки сервера (минималистичный)
+  const ServerCard = ({ server }) => {
+    const criticalMetrics = [
+      server.userZone === 'red' && 'Пользователи',
+      server.modelZone === 'red' && 'Модели',
+      server.avgSizeZone === 'red' && 'Размер',
+      server.totalSizeZone === 'red' && 'Объём'
+    ].filter(Boolean);
+
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
+        {/* Заголовок с индикатором */}
+        <div className="flex items-start justify-between mb-3">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <div 
+                className="w-3 h-3 rounded-full" 
+                style={{ backgroundColor: getZoneColor(server.overallZone) }}
+              />
+              <h3 className="text-base font-semibold text-gray-900">{server.server}</h3>
+            </div>
+            <div className="text-xs" style={{ color: getZoneColor(server.overallZone) }}>
+              {getZoneLabel(server.overallZone)}
+            </div>
+          </div>
+        </div>
+
+        {/* Основные метрики (компактно) */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {/* Пользователи */}
+          <div>
+            <div className="text-xs text-gray-500">Пользователей</div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-bold text-gray-900">{server.usersCount}</span>
+              <span className="text-xs text-gray-400">/ 70</span>
+            </div>
+          </div>
+
+          {/* Модели */}
+          <div>
+            <div className="text-xs text-gray-500">Моделей</div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-bold text-gray-900">{server.modelsCount}</span>
+              <span className="text-xs text-gray-400">/ 100</span>
+            </div>
+          </div>
+
+          {/* Средний размер */}
+          <div>
+            <div className="text-xs text-gray-500">Средний</div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-bold text-gray-900">{server.avgModelSizeMB.toFixed(0)}</span>
+              <span className="text-xs text-gray-400">МБ</span>
+            </div>
+          </div>
+
+          {/* Суммарный */}
+          <div>
+            <div className="text-xs text-gray-500">Всего</div>
+            <div className="flex items-baseline gap-1">
+              <span className="text-lg font-bold text-gray-900">{server.totalDataGB.toFixed(1)}</span>
+              <span className="text-xs text-gray-400">ГБ</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Критические метрики (если есть) */}
+        {criticalMetrics.length > 0 && (
+          <div className="pt-3 border-t border-gray-100">
+            <div className="text-xs text-red-600 font-medium mb-1">
+              ⚠ Критично:
+            </div>
+            <div className="text-xs text-gray-700">
+              {criticalMetrics.join(', ')}
+            </div>
+          </div>
+        )}
+
+        {/* Последняя активность */}
+        <div className="pt-3 border-t border-gray-100 mt-3">
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>Синхр.: {server.syncCount}</span>
+            <span>{server.lastActivity ? server.lastActivity.toLocaleDateString('ru-RU') : 'Н/Д'}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="bg-white rounded-lg shadow mb-6">
@@ -231,27 +328,10 @@ const ServersStats = ({ filteredData }) => {
       >
         <div className="flex items-center gap-4">
           <h2 className="text-lg font-semibold text-gray-900">
-            Серверная статистика и здоровье
+            Серверная статистика
           </h2>
-          <div className="flex gap-2 text-sm">
-            {criticalServers > 0 && (
-              <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full font-medium">
-                 {criticalServers} критичных
-              </span>
-            )}
-            {warningServers > 0 && (
-              <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full font-medium">
-                 {warningServers} требуют внимания
-              </span>
-            )}
-            {healthyServers > 0 && (
-              <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full font-medium">
-                 {healthyServers} здоровых
-              </span>
-            )}
-          </div>
         </div>
-        <button className="text-gray-500 hover:text-gray-700 transition">
+        <button className="text-gray-400 hover:text-gray-600">
           <svg
             className={`w-5 h-5 transform transition-transform ${isCollapsed ? 'rotate-180' : ''}`}
             fill="none"
@@ -265,164 +345,49 @@ const ServersStats = ({ filteredData }) => {
 
       {!isCollapsed && (
         <div className="p-6">
-          {/* Легенда зон */}
+          {/* Компактная легенда критериев */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Критерии оценки здоровья сервера</h3>
+            <div className="text-sm font-semibold text-gray-900 mb-3">Критерии оценки</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-              <div className="bg-green-50 border border-green-200 rounded p-3">
-                <div className="font-semibold text-green-800 mb-2"> ЗЕЛЕНАЯ ЗОНА</div>
-                <ul className="space-y-1 text-green-700">
-                  <li>• Пользователей: ≤ 20</li>
-                  <li>• Моделей: ≤ 60</li>
-                  <li>• Средний размер: ≤ 400 МБ</li>
-                  <li>• Суммарный: &lt; 50 ГБ</li>
-                </ul>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500"/>
+                <div>
+                  <span className="font-medium">Зелёная зона:</span> ≤20 польз., ≤60 моделей, ≤400 МБ, &lt;50 ГБ
+                </div>
               </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded p-3">
-                <div className="font-semibold text-yellow-800 mb-2"> ЖЕЛТАЯ ЗОНА</div>
-                <ul className="space-y-1 text-yellow-700">
-                  <li>• Пользователей: 21-70</li>
-                  <li>• Моделей: 61-100</li>
-                  <li>• Средний размер: 401-600 МБ</li>
-                  <li>• Суммарный: 50-100 ГБ</li>
-                </ul>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-yellow-500"/>
+                <div>
+                  <span className="font-medium">Жёлтая зона:</span> 21-70 польз., 61-100 моделей, 401-600 МБ, 50-100 ГБ
+                </div>
               </div>
-              <div className="bg-red-50 border border-red-200 rounded p-3">
-                <div className="font-semibold text-red-800 mb-2"> КРАСНАЯ ЗОНА</div>
-                <ul className="space-y-1 text-red-700">
-                  <li>• Пользователей: &gt; 70</li>
-                  <li>• Моделей: &gt; 100</li>
-                  <li>• Средний размер: &gt; 600 МБ</li>
-                  <li>• Суммарный: &gt; 100 ГБ</li>
-                </ul>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-red-500"/>
+                <div>
+                  <span className="font-medium">Красная зона:</span> &gt;70 польз., &gt;100 моделей, &gt;600 МБ, &gt;100 ГБ
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Детальная информация по каждому серверу */}
-          <div className="space-y-6">
-            {serversStats.map((server, index) => {
-              const overallStyle = getZoneStyle(server.overallZone);
-              const recommendations = getRecommendations(server.overallZone, server);
-              
-              return (
-                <div key={index} className={`border ${overallStyle.borderColor} rounded-lg p-5 ${overallStyle.bgColor}`}>
-                  {/* Заголовок сервера */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <span className={`text-2xl ${overallStyle.iconColor}`}>{overallStyle.icon}</span>
-                      <div>
-                        <h3 className="text-lg font-bold text-gray-900">{server.server}</h3>
-                        <div className={`text-sm font-semibold ${overallStyle.textColor}`}>
-                          {overallStyle.label}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right text-sm text-gray-600">
-                      <div>Синхронизаций: <span className="font-semibold">{server.syncCount}</span></div>
-                      <div>Последняя активность: <span className="font-semibold">
-                        {server.lastActivity ? server.lastActivity.toLocaleDateString('ru-RU') : 'Н/Д'}
-                      </span></div>
-                    </div>
-                  </div>
-
-                  {/* Показатели с зонами */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                    {/* Пользователи */}
-                    <div className={`p-3 rounded-lg border ${getZoneStyle(server.userZone).borderColor} ${getZoneStyle(server.userZone).bgColor}`}>
-                      <div className="text-xs text-gray-600 mb-1">Активных пользователей</div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-gray-900">{server.usersCount}</span>
-                        <span className={`text-xs font-semibold ${getZoneStyle(server.userZone).textColor}`}>
-                          / {server.userZone === 'green' ? '20' : server.userZone === 'yellow' ? '70' : '70+'}
-                        </span>
-                      </div>
-                      <div className={`text-xs mt-1 ${getZoneStyle(server.userZone).textColor}`}>
-                        {server.userZone === 'green' ? '✓ Норма' : server.userZone === 'yellow' ? 'Близко к лимиту' : ' Превышен лимит'}
-                      </div>
-                    </div>
-
-                    {/* Модели */}
-                    <div className={`p-3 rounded-lg border ${getZoneStyle(server.modelZone).borderColor} ${getZoneStyle(server.modelZone).bgColor}`}>
-                      <div className="text-xs text-gray-600 mb-1">Количество моделей</div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-gray-900">{server.modelsCount}</span>
-                        <span className={`text-xs font-semibold ${getZoneStyle(server.modelZone).textColor}`}>
-                          / {server.modelZone === 'green' ? '60' : server.modelZone === 'yellow' ? '100' : '100+'}
-                        </span>
-                      </div>
-                      <div className={`text-xs mt-1 ${getZoneStyle(server.modelZone).textColor}`}>
-                        {server.modelZone === 'green' ? '✓ Норма' : server.modelZone === 'yellow' ? 'Много моделей' : 'Критично много'}
-                      </div>
-                    </div>
-
-                    {/* Средний размер */}
-                    <div className={`p-3 rounded-lg border ${getZoneStyle(server.avgSizeZone).borderColor} ${getZoneStyle(server.avgSizeZone).bgColor}`}>
-                      <div className="text-xs text-gray-600 mb-1">Средний размер модели</div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-gray-900">{server.avgModelSizeMB.toFixed(0)}</span>
-                        <span className="text-xs text-gray-600">МБ</span>
-                      </div>
-                      <div className={`text-xs mt-1 ${getZoneStyle(server.avgSizeZone).textColor}`}>
-                        {server.avgSizeZone === 'green' ? '✓ Оптимально' : server.avgSizeZone === 'yellow' ? 'Большие модели' : 'Очень большие'}
-                      </div>
-                    </div>
-
-                    {/* Суммарный размер */}
-                    <div className={`p-3 rounded-lg border ${getZoneStyle(server.totalSizeZone).borderColor} ${getZoneStyle(server.totalSizeZone).bgColor}`}>
-                      <div className="text-xs text-gray-600 mb-1">Суммарный размер</div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="text-2xl font-bold text-gray-900">{server.totalDataGB.toFixed(1)}</span>
-                        <span className="text-xs text-gray-600">ГБ</span>
-                      </div>
-                      <div className={`text-xs mt-1 ${getZoneStyle(server.totalSizeZone).textColor}`}>
-                        {server.totalSizeZone === 'green' ? '✓ Достаточно места' : server.totalSizeZone === 'yellow' ? 'Проверить место' : ' Мало места'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Рекомендации */}
-                  {recommendations.length > 0 && (
-                    <div className={`p-3 rounded-lg border ${overallStyle.borderColor} bg-white`}>
-                      <div className="font-semibold text-sm text-gray-900 mb-2">Рекомендации:</div>
-                      <ul className="space-y-1 text-sm text-gray-700">
-                        {recommendations.map((rec, idx) => (
-                          <li key={idx} className="flex items-start gap-2">
-                            <span className={overallStyle.textColor}>•</span>
-                            <span>{rec}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          {/* Плитки серверов */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {currentServers.map((server, idx) => (
+              <ServerCard key={idx} server={server} />
+            ))}
           </div>
 
-          {/* Общие выводы */}
-          {(criticalServers > 0 || warningServers > 0) && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-blue-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                <div>
-                  <div className="font-semibold text-blue-800">Сводка по инфраструктуре</div>
-                  <div className="text-sm text-blue-700 mt-1">
-                    {criticalServers > 0 && (
-                      <p className="mb-2">
-                         <strong>{criticalServers} серверов</strong> находятся в критическом состоянии и требуют немедленных действий для предотвращения проблем с производительностью.
-                      </p>
-                    )}
-                    {warningServers > 0 && (
-                      <p>
-                         <strong>{warningServers} серверов</strong> приближаются к пределу возможностей. Рекомендуется запланировать расширение инфраструктуры.
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
+          {/* Пагинация */}
+          <Pagination 
+            currentPage={currentPage} 
+            totalPages={totalPages} 
+            onPageChange={setCurrentPage} 
+          />
+
+          {/* Пустое состояние */}
+          {serversStats.length === 0 && (
+            <div className="text-center py-12 text-gray-400">
+              Нет данных о серверах в выбранном диапазоне дат
             </div>
           )}
         </div>
