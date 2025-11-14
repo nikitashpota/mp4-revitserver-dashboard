@@ -1,6 +1,6 @@
 // components/ActiveProjects.jsx
 import React, { useMemo, useState } from 'react';
-import { LineChart, Line, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { bytesToMB } from '../utils/dataUtils';
 import { groupByProjects } from '../utils/projectParser';
 
@@ -235,11 +235,26 @@ const ActiveProjects = ({ filteredData }) => {
     </div>
   );
 
-  // Компонент плитки модели (минималистичная)
+  // ОБНОВЛЕНО: Компонент плитки модели с улучшенным графиком
   const ModelCard = ({ model }) => {
     const growthPercent = model.firstModelSize > 0 
       ? (((model.lastModelSize - model.firstModelSize) / model.firstModelSize) * 100).toFixed(1)
       : 0;
+
+    // Кастомный Tooltip для графика
+    const CustomTooltip = ({ active, payload }) => {
+      if (active && payload && payload.length) {
+        return (
+          <div className="bg-white border border-gray-300 rounded-lg shadow-lg px-3 py-2">
+            <p className="text-xs font-medium text-gray-900">{payload[0].payload.date}</p>
+            <p className="text-xs text-blue-600 font-semibold">
+              {payload[0].value} синхр.
+            </p>
+          </div>
+        );
+      }
+      return null;
+    };
 
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
@@ -278,18 +293,38 @@ const ActiveProjects = ({ filteredData }) => {
           </div>
         </div>
 
-        {/* Мини-график активности */}
+        {/* УЛУЧШЕННЫЙ: Мини-график активности с точками и Tooltip */}
         {model.dailySyncsArray.length > 1 && (
           <div className="border-t border-gray-100 pt-3">
-            <div className="text-xs text-gray-500 mb-2">Активность</div>
-            <ResponsiveContainer width="100%" height={50}>
+            <div className="text-xs text-gray-500 mb-2">Активность по дням</div>
+            <ResponsiveContainer width="100%" height={60}>
               <LineChart data={model.dailySyncsArray}>
+                <XAxis 
+                  dataKey="date" 
+                  hide 
+                />
+                <YAxis hide />
+                <Tooltip 
+                  content={<CustomTooltip />}
+                  cursor={{ stroke: '#3b82f6', strokeWidth: 1, strokeDasharray: '3 3' }}
+                />
                 <Line 
                   type="monotone" 
                   dataKey="count" 
                   stroke="#3b82f6" 
-                  strokeWidth={1.5}
-                  dot={false}
+                  strokeWidth={2}
+                  dot={{ 
+                    r: 3, 
+                    fill: '#3b82f6',
+                    strokeWidth: 2,
+                    stroke: '#fff'
+                  }}
+                  activeDot={{ 
+                    r: 5,
+                    fill: '#3b82f6',
+                    strokeWidth: 2,
+                    stroke: '#fff'
+                  }}
                 />
               </LineChart>
             </ResponsiveContainer>
