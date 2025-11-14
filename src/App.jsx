@@ -7,9 +7,11 @@ import UserStatsTable from './components/UserStatsTable';
 import ActivityChart from './components/ActivityChart';
 import ModelsAnalytics from './components/ModelsAnalytics';
 import ServersStats from './components/ServersStats';
+import ModelCleanup from './components/ModelCleanup';
+import ActiveProjects from './components/ActiveProjects';
 import EmptyState from './components/EmptyState';
 import SummaryStats from './components/SummaryStats';
-import { parseTSVData, processData, formatDateForInput, bytesToMB } from './utils/dataUtils';
+import { parseTSVData, processData, formatDateForInput } from './utils/dataUtils';
 
 function App() {
   const [data, setData] = useState([]);
@@ -75,13 +77,11 @@ function App() {
         stats[user] = {
           user: user,
           syncCount: 0,
-          totalDataBytes: 0,
           days: new Set()
         };
       }
 
       stats[user].syncCount += 1;
-      stats[user].totalDataBytes += record.supportSize;
       
       // Добавляем уникальные дни
       if (record.parsedDate) {
@@ -94,15 +94,15 @@ function App() {
       .map(stat => ({
         user: stat.user,
         syncCount: stat.syncCount,
-        totalDataMB: bytesToMB(stat.totalDataBytes),
-        avgDataPerDay: stat.days.size > 0 
-          ? bytesToMB(stat.totalDataBytes / stat.days.size)
-          : '0.00'
+        uniqueDays: stat.days.size,
+        avgSyncsPerDay: stat.days.size > 0 
+          ? (stat.syncCount / stat.days.size).toFixed(1)
+          : '0.0'
       }))
-      .sort((a, b) => parseFloat(b.totalDataMB) - parseFloat(a.totalDataMB));
+      .sort((a, b) => b.syncCount - a.syncCount);
   }, [filteredData]);
 
-  // Данные для графика
+  // Данные для графика - только количество синхронизаций
   const chartData = useMemo(() => {
     if (!selectedServer || !selectedModel) return [];
 
@@ -122,20 +122,14 @@ function App() {
       if (!dailyData[dateKey]) {
         dailyData[dateKey] = {
           date: dateKey,
-          dataSizeMB: 0,
           syncCount: 0
         };
       }
 
-      dailyData[dateKey].dataSizeMB += record.supportSize;
       dailyData[dateKey].syncCount += 1;
     });
 
     return Object.values(dailyData)
-      .map(day => ({
-        ...day,
-        dataSizeMB: parseFloat(bytesToMB(day.dataSizeMB))
-      }))
       .sort((a, b) => {
         const dateA = new Date(a.date.split('.').reverse().join('-'));
         const dateB = new Date(b.date.split('.').reverse().join('-'));
@@ -180,13 +174,22 @@ function App() {
 
             <SummaryStats filteredData={filteredData} />
 
-            {/* Новые компоненты */}
+            {/* Серверная статистика */}
             <ServersStats filteredData={filteredData} />
             
+            {/* НОВАЯ АНАЛИТИКА: Активные проекты */}
+            <ActiveProjects filteredData={filteredData} />
+
+            {/* НОВАЯ АНАЛИТИКА: Очистка моделей */}
+            <ModelCleanup filteredData={filteredData} />
+            
+            {/* Аналитика по моделям */}
             <ModelsAnalytics filteredData={filteredData} />
 
+            {/* Статистика по пользователям */}
             <UserStatsTable userStats={userStats} />
 
+            {/* График активности */}
             <ActivityChart
               chartData={chartData}
               detailedData={modelDetailedData}

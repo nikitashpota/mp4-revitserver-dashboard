@@ -18,7 +18,6 @@ const UserStatsTable = ({ userStats }) => {
 
   // Статистика по отфильтрованным данным
   const filteredTotalSyncs = filteredStats.reduce((sum, stat) => sum + stat.syncCount, 0);
-  const filteredTotalData = filteredStats.reduce((sum, stat) => sum + parseFloat(stat.totalDataMB), 0);
 
   return (
     <div className="bg-white rounded-lg shadow mb-6">
@@ -84,15 +83,9 @@ const UserStatsTable = ({ userStats }) => {
 
             {/* Мини-статистика по отфильтрованным данным */}
             {searchText && filteredStats.length > 0 && (
-              <div className="flex gap-4 text-sm">
-                <div className="bg-blue-50 px-3 py-2 rounded-lg">
-                  <span className="text-gray-600">Синхронизаций: </span>
-                  <span className="font-semibold text-blue-700">{filteredTotalSyncs}</span>
-                </div>
-                <div className="bg-green-50 px-3 py-2 rounded-lg">
-                  <span className="text-gray-600">Объём: </span>
-                  <span className="font-semibold text-green-700">{filteredTotalData.toFixed(2)} МБ</span>
-                </div>
+              <div className="bg-blue-50 px-3 py-2 rounded-lg text-sm">
+                <span className="text-gray-600">Синхронизаций: </span>
+                <span className="font-semibold text-blue-700">{filteredTotalSyncs}</span>
               </div>
             )}
           </div>
@@ -117,10 +110,10 @@ const UserStatsTable = ({ userStats }) => {
                     Количество синхронизаций
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Объем данных (МБ)
+                    Уникальных дней работы
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Средний объём/день (МБ)
+                    Среднее синхр./день
                   </th>
                 </tr>
               </thead>
@@ -137,10 +130,10 @@ const UserStatsTable = ({ userStats }) => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <span className="font-semibold">{stat.totalDataMB}</span>
+                        <span className="font-semibold text-gray-700">{stat.uniqueDays}</span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <span className="font-semibold text-purple-600">{stat.avgDataPerDay}</span>
+                        <span className="font-semibold text-purple-600">{stat.avgSyncsPerDay}</span>
                       </td>
                     </tr>
                   ))
@@ -165,9 +158,6 @@ const UserStatsTable = ({ userStats }) => {
                 <div className="flex gap-6">
                   <span className="text-gray-900">
                     Синхронизаций: <span className="font-bold text-blue-600">{filteredTotalSyncs}</span>
-                  </span>
-                  <span className="text-gray-900">
-                    Объём данных: <span className="font-bold text-green-600">{filteredTotalData.toFixed(2)} МБ</span>
                   </span>
                 </div>
               </div>

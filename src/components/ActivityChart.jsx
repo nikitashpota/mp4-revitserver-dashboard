@@ -1,7 +1,6 @@
 // components/ActivityChart.jsx
 import React, { useMemo, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { bytesToMB } from '../utils/dataUtils';
 import Select from 'react-select';
 
 const ActivityChart = ({
@@ -15,8 +14,7 @@ const ActivityChart = ({
   onModelChange,
 }) => {
   const totalSyncs = chartData.reduce((sum, day) => sum + day.syncCount, 0);
-  const totalDataMB = chartData.reduce((sum, day) => sum + (day.dataSizeMB || 0), 0);
-  const avgDataMB = chartData.length > 0 ? totalDataMB / chartData.length : 0;
+  const avgSyncsPerDay = chartData.length > 0 ? (totalSyncs / chartData.length).toFixed(1) : 0;
 
   // ---------- Статистика по пользователям ----------
   const userStats = useMemo(() => {
@@ -34,27 +32,24 @@ const ActivityChart = ({
         stats[user] = {
           user,
           syncCount: 0,
-          totalDataBytes: 0,
           days: new Set(),
         };
       }
 
       if (dateKey) stats[user].days.add(dateKey);
       stats[user].syncCount += 1;
-      stats[user].totalDataBytes += (record.supportSize || 0);
     });
 
     return Object.values(stats)
       .map(stat => ({
         user: stat.user,
         syncCount: stat.syncCount,
-        totalDataMB: bytesToMB(stat.totalDataBytes),
-        avgDataPerDay:
-          stat.days.size > 0
-            ? bytesToMB(stat.totalDataBytes / stat.days.size)
-            : '0.00',
+        uniqueDays: stat.days.size,
+        avgSyncsPerDay: stat.days.size > 0 
+          ? (stat.syncCount / stat.days.size).toFixed(1)
+          : '0.0',
       }))
-      .sort((a, b) => parseFloat(b.totalDataMB) - parseFloat(a.totalDataMB));
+      .sort((a, b) => b.syncCount - a.syncCount);
   }, [detailedData]);
 
   const uniqueUsersCount = userStats.length;
@@ -71,13 +66,7 @@ const ActivityChart = ({
   const modelOptions = useMemo(() => {
     if (!selectedServer) return [{ value: '', label: 'Сначала выберите сервер' }];
 
-    const filtered = models
-      .filter(m => {
-        // Предполагаем, что models – массив строк. Если модели уже привязаны к серверам,
-        // замените логику фильтрации на соответствующую.
-        return true;
-      })
-      .map(m => ({ value: m, label: m }));
+    const filtered = models.map(m => ({ value: m, label: m }));
 
     return [{ value: '', label: 'Выберите модель' }, ...filtered];
   }, [models, selectedServer]);
@@ -158,7 +147,7 @@ const ActivityChart = ({
               <YAxis
                 tick={{ fontSize: 12 }}
                 label={{
-                  value: 'Объём данных (МБ)',
+                  value: 'Количество синхронизаций',
                   angle: -90,
                   position: 'insideLeft',
                 }}
@@ -170,37 +159,30 @@ const ActivityChart = ({
                   borderRadius: '8px',
                 }}
                 formatter={(value, name) => {
-                  if (name === 'dataSizeMB') return [value + ' МБ', 'SupportSize'];
                   if (name === 'syncCount') return [value, 'Синхронизаций'];
                   return [value, name];
                 }}
               />
               <Legend />
               <Bar
-                dataKey="dataSizeMB"
+                dataKey="syncCount"
                 fill="#3b82f6"
-                name="Объём данных (МБ)"
+                name="Синхронизаций"
                 radius={[8, 8, 0, 0]}
               />
             </BarChart>
           </ResponsiveContainer>
 
           {/* Краткая статистика */}
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-blue-50 rounded-lg p-4">
               <div className="text-sm text-gray-600">Всего синхронизаций</div>
               <div className="text-2xl font-bold text-blue-600">{totalSyncs}</div>
             </div>
             <div className="bg-green-50 rounded-lg p-4">
-              <div className="text-sm text-gray-600">Общий об.дан</div>
+              <div className="text-sm text-gray-600">Среднее синхр./день</div>
               <div className="text-2xl font-bold text-green-600">
-                {totalDataMB.toFixed(2)} МБ
-              </div>
-            </div>
-            <div className="bg-purple-50 rounded-lg p-4">
-              <div className="text-sm text-gray-600">Средний об.дан/день</div>
-              <div className="text-2xl font-bold text-purple-600">
-                {avgDataMB.toFixed(2)} МБ
+                {avgSyncsPerDay}
               </div>
             </div>
             <div className="bg-orange-50 rounded-lg p-4">
@@ -228,10 +210,10 @@ const ActivityChart = ({
                         Синхронизаций
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Общий объём (МБ)
+                        Уникальных дней
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Средний объём/день (МБ)
+                        Среднее синхр./день
                       </th>
                     </tr>
                   </thead>
@@ -247,11 +229,11 @@ const ActivityChart = ({
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className="font-semibold">{stat.totalDataMB}</span>
+                          <span className="font-semibold text-gray-700">{stat.uniqueDays}</span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                           <span className="font-semibold text-purple-600">
-                            {stat.avgDataPerDay}
+                            {stat.avgSyncsPerDay}
                           </span>
                         </td>
                       </tr>
