@@ -1,10 +1,44 @@
 // components/ServersStats.jsx
 import React, { useMemo, useState } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { bytesToMB } from '../utils/dataUtils';
+
+// Функция для получения номера недели в году
+const getWeekNumber = (date) => {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return `${d.getUTCFullYear()}-W${weekNo.toString().padStart(2, '0')}`;
+};
+
+// Функция для получения даты понедельника по номеру недели
+const getMondayFromWeek = (weekKey) => {
+  const [year, week] = weekKey.split('-W');
+  const simple = new Date(year, 0, 1 + (week - 1) * 7);
+  const dow = simple.getDay();
+  const ISOweekStart = simple;
+  if (dow <= 4)
+    ISOweekStart.setDate(simple.getDate() - simple.getDay() + 1);
+  else
+    ISOweekStart.setDate(simple.getDate() + 8 - simple.getDay());
+  return ISOweekStart;
+};
+
+// Функция для форматирования даты понедельника
+const formatWeekLabel = (weekKey) => {
+  const monday = getMondayFromWeek(weekKey);
+  const day = monday.getDate().toString().padStart(2, '0');
+  const month = (monday.getMonth() + 1).toString().padStart(2, '0');
+  const year = monday.getFullYear();
+  return `${day}.${month}.${year}`;
+};
 
 const ServersStats = ({ filteredData }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [showGraphs, setShowGraphs] = useState(true);
   const itemsPerPage = 12; // 3 колонки × 4 ряда
 
   // Определение зон для каждого показателя
@@ -146,6 +180,52 @@ const ServersStats = ({ filteredData }) => {
       const zoneOrder = { red: 0, yellow: 1, green: 2 };
       return zoneOrder[a.overallZone] - zoneOrder[b.overallZone];
     });
+  }, [filteredData]);
+
+  // НОВОЕ: Данные для графиков активности по неделям для каждого сервера
+  const weeklyActivityByServer = useMemo(() => {
+    const serverWeeks = {};
+
+    filteredData.forEach(record => {
+      const server = record['Сервер'];
+      const model = record['Имя файла'];
+      const user = record['User'];
+      const date = record.parsedDate;
+
+      if (!server || !date) return;
+
+      const weekKey = getWeekNumber(date);
+
+      if (!serverWeeks[server]) {
+        serverWeeks[server] = {};
+      }
+
+      if (!serverWeeks[server][weekKey]) {
+        serverWeeks[server][weekKey] = {
+          weekKey,
+          models: new Set(),
+          users: new Set(),
+        };
+      }
+
+      if (model) serverWeeks[server][weekKey].models.add(model);
+      if (user) serverWeeks[server][weekKey].users.add(user);
+    });
+
+    // Преобразуем в массивы для графиков
+    const result = {};
+    Object.entries(serverWeeks).forEach(([server, weeks]) => {
+      result[server] = Object.values(weeks)
+        .map(week => ({
+          week: week.weekKey,
+          weekLabel: formatWeekLabel(week.weekKey),
+          activeModels: week.models.size,
+          activeUsers: week.users.size,
+        }))
+        .sort((a, b) => a.week.localeCompare(b.week));
+    });
+
+    return result;
   }, [filteredData]);
 
   // Общая статистика
@@ -320,8 +400,85 @@ const ServersStats = ({ filteredData }) => {
     );
   };
 
+  // НОВОЕ: Компонент графика активности для сервера
+  const ServerActivityChart = ({ serverName, data }) => {
+    if (!data || data.length === 0) {
+      return (
+        <div className="text-center py-8 text-gray-400 text-sm">
+          Недостаточно данных для построения графика
+        </div>
+      );
+    }
+
+    const CustomTooltip = ({ active, payload }) => {
+      if (active && payload && payload.length) {
+        return (
+          <div className="bg-white border border-gray-300 rounded-lg shadow-lg px-3 py-2">
+            <p className="text-xs font-medium text-gray-900 mb-1">
+              Неделя с {payload[0].payload.weekLabel}
+            </p>
+            <p className="text-xs text-blue-600 font-semibold">
+              Модели: {payload[0].value}
+            </p>
+            <p className="text-xs text-green-600 font-semibold">
+              Пользователи: {payload[1].value}
+            </p>
+          </div>
+        );
+      }
+      return null;
+    };
+
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg p-4 mb-4">
+        <h4 className="text-sm font-semibold text-gray-900 mb-4">
+          Динамика активности: {serverName}
+        </h4>
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+            <XAxis 
+              dataKey="weekLabel" 
+              tick={{ fontSize: 11 }}
+              angle={-45}
+              textAnchor="end"
+              height={70}
+            />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend 
+              wrapperStyle={{ fontSize: '12px' }}
+              formatter={(value) => {
+                if (value === 'activeModels') return 'Активные модели';
+                if (value === 'activeUsers') return 'Активные пользователи';
+                return value;
+              }}
+            />
+            <Line 
+              type="monotone" 
+              dataKey="activeModels" 
+              stroke="#3b82f6" 
+              strokeWidth={2}
+              dot={{ r: 3, fill: '#3b82f6' }}
+              activeDot={{ r: 5 }}
+            />
+            <Line 
+              type="monotone" 
+              dataKey="activeUsers" 
+              stroke="#10b981" 
+              strokeWidth={2}
+              dot={{ r: 3, fill: '#10b981' }}
+              activeDot={{ r: 5 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-white rounded-lg shadow mb-6">
+      {/* Заголовок */}
       <div 
         className="px-6 py-4 border-b border-gray-200 flex justify-between items-center cursor-pointer"
         onClick={() => setIsCollapsed(!isCollapsed)}
@@ -369,6 +526,33 @@ const ServersStats = ({ filteredData }) => {
               </div>
             </div>
           </div>
+
+          {/* НОВОЕ: Кнопка переключения графиков */}
+          <div className="mb-6 flex items-center justify-between">
+            <h3 className="text-md font-semibold text-gray-900">Обзор серверов</h3>
+            <button
+              onClick={() => setShowGraphs(!showGraphs)}
+              className="w-44 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+            >
+              {showGraphs ? 'Скрыть активность' : 'Показать активность'}
+            </button>
+          </div>
+
+          {/* НОВОЕ: Графики активности по неделям */}
+          {showGraphs && (
+            <div className="mb-8 space-y-4">
+              <h3 className="text-md font-semibold text-gray-900 mb-4">
+                Недельная динамика активности
+              </h3>
+              {serversStats.map((server, idx) => (
+                <ServerActivityChart 
+                  key={idx}
+                  serverName={server.server}
+                  data={weeklyActivityByServer[server.server] || []}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Плитки серверов */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
